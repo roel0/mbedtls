@@ -1,4 +1,5 @@
 /*
+ *
  *  SSL client with options
  *
  *  Copyright (C) 2006-2015, ARM Limited, All Rights Reserved
@@ -152,6 +153,7 @@ int main( void )
 #define DFL_AUTH_MODE           -1
 #define DFL_CERT_REQ_CA_LIST    MBEDTLS_SSL_CERT_REQ_CA_LIST_ENABLED
 #define DFL_MFL_CODE            MBEDTLS_SSL_MAX_FRAG_LEN_NONE
+#define DFL_RSL                 MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE
 #define DFL_TRUNC_HMAC          -1
 #define DFL_TICKETS             MBEDTLS_SSL_SESSION_TICKETS_ENABLED
 #define DFL_TICKET_TIMEOUT      86400
@@ -352,6 +354,13 @@ int main( void )
 #define USAGE_MAX_FRAG_LEN ""
 #endif /* MBEDTLS_SSL_MAX_FRAGMENT_LENGTH */
 
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
+#define USAGE_RECORD_SIZE_LIMIT                                      \
+    "    record_size_limit=%%d     default: 0 (extension not used)\n"
+#else
+#define USAGE_RECORD_SIZE_LIMIT ""
+#endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
+
 #if defined(MBEDTLS_SSL_TRUNCATED_HMAC)
 #define USAGE_TRUNC_HMAC \
     "    trunc_hmac=%%d       default: library default\n"
@@ -501,6 +510,7 @@ int main( void )
     USAGE_NSS_KEYLOG_FILE                                   \
     USAGE_CACHE                                             \
     USAGE_MAX_FRAG_LEN                                      \
+    USAGE_RECORD_SIZE_LIMIT                                 \
     USAGE_TRUNC_HMAC                                        \
     USAGE_ALPN                                              \
     USAGE_EMS                                               \
@@ -590,11 +600,12 @@ struct options
     int auth_mode;              /* verify mode for connection               */
     int cert_req_ca_list;       /* should we send the CA list?              */
     unsigned char mfl_code;     /* code for maximum fragment length         */
+    uint16_t rsl;                /* record size limit                       */
     int trunc_hmac;             /* accept truncated hmac?                   */
     int tickets;                /* enable / disable session tickets         */
     int ticket_timeout;         /* session ticket lifetime                  */
     int cache_max;              /* max number of session cache entries      */
-    int cache_timeout;          /* expiration delay of session cache entries */
+    int cache_timeout;          /* expiration delay of session cache entries*/
     char *sni;                  /* string describing sni information        */
     const char *curves;         /* list of supported elliptic curves        */
     const char *alpn_string;    /* ALPN supported protocols                 */
@@ -2274,6 +2285,11 @@ int main( int argc, char *argv[] )
             if( opt.cert_req_ca_list < 0 || opt.cert_req_ca_list > 1 )
                 goto usage;
         }
+        else if (strcmp(p, "record_size_limit") == 0)
+        {
+            opt.rsl = atoi(q);
+            if (opt.rsl > 16384) goto usage;
+        }
         else if( strcmp( p, "max_frag_len" ) == 0 )
         {
             if( strcmp( q, "512" ) == 0 )
@@ -3052,6 +3068,14 @@ int main( int argc, char *argv[] )
     }
 #endif /* MBEDTLS_SSL_DTLS_CONNECTION_ID */
 
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
+    if ((ret = mbedtls_ssl_conf_record_size_limit(&conf, opt.rsl)) != 0)
+    {
+        mbedtls_printf(" failed\n  ! mbedtls_ssl_conf_record_size_limit returned %d\n\n", ret);
+        goto exit;
+    }
+#endif
+
 #if defined(MBEDTLS_SSL_TRUNCATED_HMAC)
     if( opt.trunc_hmac != DFL_TRUNC_HMAC )
         mbedtls_ssl_conf_truncated_hmac( &conf, opt.trunc_hmac );
@@ -3078,6 +3102,17 @@ int main( int argc, char *argv[] )
         mbedtls_ssl_conf_export_keys_ext_cb( &conf,
                                              nss_keylog_export,
                                              NULL );
+    }
+#endif
+
+
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
+    if ((unsigned int)mbedtls_ssl_get_record_size_limit(&ssl) == MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE) {
+        mbedtls_printf("    [ Record Size Limit has not been negotiated ]\n");
+    }
+    else {
+        mbedtls_printf("    [ Record Size Limit is %u bytes ]\n",
+            (unsigned int)mbedtls_ssl_get_record_size_limit(&ssl));
     }
 #endif
 

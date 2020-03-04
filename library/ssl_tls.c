@@ -157,7 +157,171 @@ int mbedtls_ssl_get_peer_cid( mbedtls_ssl_context *ssl,
 #endif /* MBEDTLS_SSL_DTLS_CONNECTION_ID */
 
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
+int mbedtls_ssl_conf_record_size_limit(mbedtls_ssl_config *conf, uint16_t rsl)
+{
 
+//  if (((rsl > 0) && (rsl <= 64)) || (rsl > MBEDTLS_SSL_MAX_CONTENT_LEN))
+    if (rsl > MBEDTLS_SSL_MAX_CONTENT_LEN)
+    {
+        // disable use of record size limit functionality
+        //conf->record_size_limit = 0;
+        return(MBEDTLS_ERR_SSL_BAD_INPUT_DATA);
+    }
+
+    conf->record_size_limit = rsl;
+    return(0);
+}
+#endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
+
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
+uint16_t mbedtls_ssl_get_record_size_limit(const mbedtls_ssl_context *ssl)
+{
+
+    if (ssl->session_out != NULL)
+    {
+        return ssl->session_out->record_size_limit;
+    }
+    else return 0;
+
+}
+#endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
+
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
+void ssl_write_record_size_limit_ext(mbedtls_ssl_context *ssl,
+    unsigned char *buf,
+    size_t *olen)
+{
+    unsigned char *p = buf;
+    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_MAX_CONTENT_LEN;
+
+    *olen = 0;
+
+    if (ssl->conf->record_size_limit == MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE) {
+
+#if defined(MBEDTLS_SSL_SRV_C)
+        if (ssl->conf->endpoint == MBEDTLS_SSL_IS_SERVER)
+        {
+            /* If the server does not send a record size limit extension
+             * then we set the session information to 'do not use it'.
+             */
+            ssl->session_negotiate->record_size_limit = MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE;
+        }
+#endif /* MBEDTLS_SSL_SRV_C */
+        return;
+    }
+
+#if defined(MBEDTLS_SSL_CLI_C)
+    if (ssl->conf->endpoint == MBEDTLS_SSL_IS_CLIENT)
+    {
+        MBEDTLS_SSL_DEBUG_MSG(3, ("client hello, adding record_size_limit extension"));
+    }
+    else
+#endif /* MBEDTLS_SSL_CLI_C */
+
+#if defined(MBEDTLS_SSL_SRV_C)
+        if (ssl->conf->endpoint == MBEDTLS_SSL_IS_SERVER)
+        {
+            /* As a server we are not going to add the record size limit extension
+            * if the client hasn't provided it in the ClientHello.
+            */
+            if (ssl->session_negotiate->record_size_limit == MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE)
+            {
+                return;
+            }
+            else {
+                MBEDTLS_SSL_DEBUG_MSG(3, ("server hello, adding record_size_limit extension"));
+            }
+        }
+        else
+#endif /* MBEDTLS_SSL_SRV_C */
+        {
+            MBEDTLS_SSL_DEBUG_MSG(1, ("should never happen"));
+            return;
+        }
+
+    if (end < p || (size_t)(end - p) < 6)
+    {
+        MBEDTLS_SSL_DEBUG_MSG(1, ("buffer too small"));
+        return;
+    }
+
+    *p++ = (unsigned char)((MBEDTLS_TLS_EXT_RECORD_SIZE_LIMIT >> 8) & 0xFF);
+    *p++ = (unsigned char)((MBEDTLS_TLS_EXT_RECORD_SIZE_LIMIT) & 0xFF);
+
+    *p++ = 0x00;
+    *p++ = 2;
+
+    *p++ = (unsigned char)((ssl->conf->record_size_limit >> 8) & 0xFF);
+    *p++ = (unsigned char)((ssl->conf->record_size_limit) & 0xFF);
+
+    MBEDTLS_SSL_DEBUG_MSG(3, ("record size limit: %d", ssl->conf->record_size_limit));
+    *olen = 6;
+}
+#endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
+
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
+int ssl_parse_record_size_limit_ext(mbedtls_ssl_context *ssl,
+    const unsigned char *buf,
+    size_t len)
+{
+    uint16_t rsl;
+
+#if defined(MBEDTLS_SSL_CLI_C)
+    if (ssl->conf->endpoint == MBEDTLS_SSL_IS_CLIENT)
+    {
+        /* Server should use the extension only if we did */
+        if (ssl->conf->record_size_limit == MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE || len != 2)
+        {
+            return(MBEDTLS_ERR_SSL_BAD_HS_SERVER_HELLO);
+        }
+
+    }
+    else
+#endif /* MBEDTLS_SSL_CLI_C */
+
+#if defined(MBEDTLS_SSL_SRV_C)
+        if (ssl->conf->endpoint == MBEDTLS_SSL_IS_SERVER)
+        {
+            if (len != 2)
+            {
+                return(MBEDTLS_ERR_SSL_BAD_HS_CLIENT_HELLO);
+            }
+        }
+        else
+#endif /* MBEDTLS_SSL_SRV_C */
+        {
+            MBEDTLS_SSL_DEBUG_MSG(1, ("should never happen"));
+            return(MBEDTLS_ERR_SSL_INTERNAL_ERROR);
+        }
+
+    rsl = (buf[0] << 8) | buf[1];
+
+    MBEDTLS_SSL_DEBUG_MSG(3, ("record size limit: %d", rsl));
+
+    if (rsl < 64) {
+        MBEDTLS_SSL_DEBUG_MSG(1, ("Illegal paramerer: Maximum Record Size < 64 bytes"));
+
+        mbedtls_ssl_send_alert_message(ssl, MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+            MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER);
+        return(MBEDTLS_ERR_SSL_BAD_HS_SERVER_HELLO);
+    }
+
+    /* The peer provides us with information about the its buffer size.
+     * We will not send payloads larger than record_size_limit.
+     * On the other hand, the peer needs to respect our buffer size limits
+     * as well. This information is recorded in ssl->conf->record_size_limit.
+     *
+     * During the handshake we may, however, encounter that our communication
+     * partner does not recognize this extension or does not want to use it.
+     * In that case, record_size_limit will be zero.
+     */
+
+    ssl->session_negotiate->record_size_limit = rsl;
+
+    return(0);
+}
+#endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
 #if defined(MBEDTLS_SSL_MAX_FRAGMENT_LENGTH)
 /*
  * Convert max_fragment_length codes to length.
@@ -4869,6 +5033,12 @@ int mbedtls_ssl_get_max_out_record_payload( const mbedtls_ssl_context *ssl )
     if( max_len > mfl )
         max_len = mfl;
 #endif
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
+    const uint16_t limit = ssl->session->record_size_limit;
+    if (max_len > limit)
+        max_len = limit;
+#endif
+
 
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
     if( mbedtls_ssl_get_current_mtu( ssl ) != 0 )

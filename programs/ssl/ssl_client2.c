@@ -116,6 +116,7 @@ int main( void )
 #define DFL_SHA1                -1
 #define DFL_AUTH_MODE           -1
 #define DFL_MFL_CODE            MBEDTLS_SSL_MAX_FRAG_LEN_NONE
+#define DFL_RSL                 MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE
 #define DFL_TRUNC_HMAC          -1
 #define DFL_RECSPLIT            -1
 #define DFL_DHMLEN              -1
@@ -268,6 +269,13 @@ int main( void )
 #define USAGE_MAX_FRAG_LEN ""
 #endif /* MBEDTLS_SSL_MAX_FRAGMENT_LENGTH */
 
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
+#define USAGE_RECORD_SIZE_LIMIT                                      \
+    "    record_size_limit=%%d     default: 0 (extension not used)\n"
+#else
+#define USAGE_RECORD_SIZE_LIMIT ""
+#endif /* MBEDTLS_SSL_RECORD_SIZE_LIMIT */
+
 #if defined(MBEDTLS_SSL_CBC_RECORD_SPLITTING)
 #define USAGE_RECSPLIT \
     "    recsplit=0/1        default: (library default: on)\n"
@@ -415,6 +423,7 @@ int main( void )
     USAGE_TICKETS                                           \
     USAGE_EAP_TLS                                           \
     USAGE_MAX_FRAG_LEN                                      \
+    USAGE_RECORD_SIZE_LIMIT                                 \
     USAGE_TRUNC_HMAC                                        \
     USAGE_CONTEXT_CRT_CB                                    \
     USAGE_ALPN                                              \
@@ -487,6 +496,7 @@ struct options
     int allow_sha1;             /* flag for SHA-1 support                   */
     int auth_mode;              /* verify mode for connection               */
     unsigned char mfl_code;     /* code for maximum fragment length         */
+    uint16_t rsl;               /* record size limit                        */
     int trunc_hmac;             /* negotiate truncated hmac or not          */
     int recsplit;               /* enable record splitting?                 */
     int dhmlen;                 /* minimum DHM params len in bits           */
@@ -1634,6 +1644,11 @@ int main( int argc, char *argv[] )
             else
                 goto usage;
         }
+        else if ( strcmp( p, "record_size_limit" ) == 0 )
+        {
+            opt.rsl = atoi(q);
+            if (opt.rsl > 16384) goto usage;
+        }
         else if( strcmp( p, "max_frag_len" ) == 0 )
         {
             if( strcmp( q, "512" ) == 0 )
@@ -2250,7 +2265,13 @@ int main( int argc, char *argv[] )
         goto exit;
     }
 #endif
-
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
+    if ((ret = mbedtls_ssl_conf_record_size_limit(&conf, opt.rsl)) != 0)
+    {
+        mbedtls_printf(" failed\n  ! mbedtls_ssl_conf_record_size_limit returned %d\n\n", ret);
+        goto exit;
+    }
+#endif
 #if defined(MBEDTLS_SSL_TRUNCATED_HMAC)
     if( opt.trunc_hmac != DFL_TRUNC_HMAC )
         mbedtls_ssl_conf_truncated_hmac( &conf, opt.trunc_hmac );
@@ -2291,7 +2312,15 @@ int main( int argc, char *argv[] )
     if( opt.dhmlen != DFL_DHMLEN )
         mbedtls_ssl_conf_dhm_min_bitlen( &conf, opt.dhmlen );
 #endif
-
+#if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
+    if ((unsigned int)mbedtls_ssl_get_record_size_limit(&ssl) == MBEDTLS_SSL_RECORD_SIZE_LIMIT_NONE) {
+        mbedtls_printf("    [ Record Size Limit has not been negotiated ]\n");
+    }
+    else {
+        mbedtls_printf("    [ Record Size Limit is %u bytes ]\n",
+            (unsigned int)mbedtls_ssl_get_record_size_limit(&ssl));
+    }
+#endif
 #if defined(MBEDTLS_SSL_ALPN)
     if( opt.alpn_string != NULL )
         if( ( ret = mbedtls_ssl_conf_alpn_protocols( &conf, alpn_list ) ) != 0 )
