@@ -5035,7 +5035,7 @@ int mbedtls_ssl_get_max_out_record_payload( const mbedtls_ssl_context *ssl )
 #endif
 #if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT )
     const uint16_t limit = ssl->session->record_size_limit;
-    if (max_len > limit)
+    if (max_len > limit && limit)
         max_len = limit;
 #endif
 
