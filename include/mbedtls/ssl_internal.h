@@ -884,6 +884,9 @@ int mbedtls_ssl_flush_output( mbedtls_ssl_context *ssl );
 int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl );
 int mbedtls_ssl_write_certificate( mbedtls_ssl_context *ssl );
 
+int mbedtls_realloc_in_buf(mbedtls_ssl_context *ssl, uint32_t new_size);
+int mbedtls_realloc_out_buf(mbedtls_ssl_context *ssl, uint32_t new_size);
+
 #if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
 void ssl_write_record_size_limit_ext(mbedtls_ssl_context *ssl, unsigned char *buf, size_t *olen);
 int ssl_parse_record_size_limit_ext(mbedtls_ssl_context *ssl, const unsigned char *buf, size_t len);

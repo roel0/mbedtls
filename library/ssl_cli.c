@@ -100,7 +100,7 @@ static void ssl_write_hostname_ext( mbedtls_ssl_context *ssl,
                                     size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
     size_t hostname_len;
 
     *olen = 0;
@@ -170,7 +170,7 @@ static void ssl_write_renegotiation_ext( mbedtls_ssl_context *ssl,
                                          size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     *olen = 0;
 
@@ -214,7 +214,7 @@ static void ssl_write_signature_algorithms_ext( mbedtls_ssl_context *ssl,
                                                 size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
     size_t sig_alg_len = 0;
     const int *md;
 #if defined(MBEDTLS_RSA_C) || defined(MBEDTLS_ECDSA_C)
@@ -299,7 +299,7 @@ static void ssl_write_supported_elliptic_curves_ext( mbedtls_ssl_context *ssl,
                                                      size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
     unsigned char *elliptic_curve_list = p + 6;
     size_t elliptic_curve_len = 0;
     const mbedtls_ecp_curve_info *info;
@@ -372,7 +372,7 @@ static void ssl_write_supported_point_formats_ext( mbedtls_ssl_context *ssl,
                                                    size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     *olen = 0;
 
@@ -405,7 +405,7 @@ static void ssl_write_ecjpake_kkpp_ext( mbedtls_ssl_context *ssl,
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
     size_t kkpp_len;
 
     *olen = 0;
@@ -483,7 +483,7 @@ static void ssl_write_cid_ext( mbedtls_ssl_context *ssl,
 {
     unsigned char *p = buf;
     size_t ext_len;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     /*
      * Quoting draft-ietf-tls-dtls-connection-id-05
@@ -530,7 +530,7 @@ static void ssl_write_max_fragment_length_ext( mbedtls_ssl_context *ssl,
                                                size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     *olen = 0;
 
@@ -563,7 +563,7 @@ static void ssl_write_truncated_hmac_ext( mbedtls_ssl_context *ssl,
                                           unsigned char *buf, size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     *olen = 0;
 
@@ -595,7 +595,7 @@ static void ssl_write_encrypt_then_mac_ext( mbedtls_ssl_context *ssl,
                                        unsigned char *buf, size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     *olen = 0;
 
@@ -629,7 +629,7 @@ static void ssl_write_extended_ms_ext( mbedtls_ssl_context *ssl,
                                        unsigned char *buf, size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
 
     *olen = 0;
 
@@ -663,7 +663,7 @@ static void ssl_write_session_ticket_ext( mbedtls_ssl_context *ssl,
                                           unsigned char *buf, size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
     size_t tlen = ssl->session_negotiate->ticket_len;
 
     *olen = 0;
@@ -707,7 +707,7 @@ static void ssl_write_alpn_ext( mbedtls_ssl_context *ssl,
                                 unsigned char *buf, size_t *olen )
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_OUT_CONTENT_LEN;
+    const unsigned char *end = ssl->out_msg + (ssl->out_buf_end - ssl->out_buf);
     size_t alpnlen = 0;
     const char **cur;
 
@@ -2411,7 +2411,7 @@ static int ssl_write_encrypted_pms( mbedtls_ssl_context *ssl,
     unsigned char *p = ssl->handshake->premaster + pms_offset;
     mbedtls_pk_context * peer_pk;
 
-    if( offset + len_bytes > MBEDTLS_SSL_OUT_CONTENT_LEN )
+    if( offset + len_bytes > (size_t)(ssl->out_buf_end - ssl->out_buf) )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "buffer too small for encrypted pms" ) );
         return( MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL );
@@ -2459,7 +2459,7 @@ static int ssl_write_encrypted_pms( mbedtls_ssl_context *ssl,
     if( ( ret = mbedtls_pk_encrypt( peer_pk,
                             p, ssl->handshake->pmslen,
                             ssl->out_msg + offset + len_bytes, olen,
-                            MBEDTLS_SSL_OUT_CONTENT_LEN - offset - len_bytes,
+                            (ssl->out_buf_end - ssl->out_buf) - offset - len_bytes,
                             ssl->conf->f_rng, ssl->conf->p_rng ) ) != 0 )
     {
         MBEDTLS_SSL_DEBUG_RET( 1, "mbedtls_rsa_pkcs1_encrypt", ret );
@@ -3422,7 +3422,7 @@ ecdh_calc_secret:
         header_len = 4;
         content_len = ssl->conf->psk_identity_len;
 
-        if( header_len + 2 + content_len > MBEDTLS_SSL_OUT_CONTENT_LEN )
+        if( header_len + 2 + content_len > (ssl->out_buf_end - ssl->out_buf) )
         {
             MBEDTLS_SSL_DEBUG_MSG( 1, ( "psk identity too long or "
                                         "SSL buffer too short" ) );
@@ -3474,7 +3474,7 @@ ecdh_calc_secret:
             content_len = ssl->handshake->dhm_ctx.len;
 
             if( header_len + 2 + content_len >
-                MBEDTLS_SSL_OUT_CONTENT_LEN )
+                (ssl->out_buf_end - ssl->out_buf) )
             {
                 MBEDTLS_SSL_DEBUG_MSG( 1, ( "psk identity or DHM size too long"
                                             " or SSL buffer too short" ) );
@@ -3511,7 +3511,7 @@ ecdh_calc_secret:
             ret = mbedtls_ecdh_make_public( &ssl->handshake->ecdh_ctx,
                     &content_len,
                     &ssl->out_msg[header_len],
-                    MBEDTLS_SSL_OUT_CONTENT_LEN - header_len,
+                    (ssl->out_buf_end - ssl->out_buf) - header_len,
                     ssl->conf->f_rng, ssl->conf->p_rng );
             if( ret != 0 )
             {
@@ -3566,7 +3566,7 @@ ecdh_calc_secret:
 
         ret = mbedtls_ecjpake_write_round_two( &ssl->handshake->ecjpake_ctx,
                 ssl->out_msg + header_len,
-                MBEDTLS_SSL_OUT_CONTENT_LEN - header_len,
+                (ssl->out_buf_end - ssl->out_buf) - header_len,
                 &content_len,
                 ssl->conf->f_rng, ssl->conf->p_rng );
         if( ret != 0 )
