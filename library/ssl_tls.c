@@ -2204,6 +2204,55 @@ int mbedtls_ssl_parse_certificate( mbedtls_ssl_context *ssl )
 
 #else /* MBEDTLS_KEY_EXCHANGE__WITH_CERT__ENABLED */
 /* Some certificate support -> implement write and parse */
+int mbedtls_realloc_in_buf(mbedtls_ssl_context *ssl, uint32_t new_size)
+{
+    uint32_t ctr_offset = ssl->in_ctr - ssl->in_buf;
+    uint32_t hdr_offset = ssl->in_hdr - ssl->in_buf;
+    uint32_t len_offset = ssl->in_len - ssl->in_buf;
+    uint32_t iv_offset = ssl->in_iv - ssl->in_buf;
+    uint32_t msg_offset = ssl->in_msg - ssl->in_buf;
+    uint32_t offt_offset = ssl->in_offt - ssl->in_buf;
+
+    ssl->in_buf = mbedtls_realloc(ssl->in_buf, new_size);
+    if (!ssl->in_buf) {
+        return( MBEDTLS_ERR_SSL_ALLOC_FAILED );
+    }
+
+    ssl->in_buf_end = ssl->in_buf + new_size;
+    ssl->in_ctr= ssl->in_buf + ctr_offset;
+    ssl->in_hdr = ssl->in_buf + hdr_offset;
+    ssl->in_len = ssl->in_buf + len_offset;
+    ssl->in_iv = ssl->in_buf + iv_offset;
+    ssl->in_msg = ssl->in_buf + msg_offset;
+    if (ssl->in_offt) {
+        ssl->in_offt = ssl->in_buf + offt_offset;
+    }
+
+    return 0;
+}
+
+int mbedtls_realloc_out_buf(mbedtls_ssl_context *ssl, uint32_t new_size)
+{
+    uint32_t ctr_offset = ssl->out_ctr - ssl->out_buf;
+    uint32_t hdr_offset = ssl->out_hdr - ssl->out_buf;
+    uint32_t len_offset = ssl->out_len - ssl->out_buf;
+    uint32_t iv_offset = ssl->out_iv - ssl->out_buf;
+    uint32_t msg_offset = ssl->out_msg - ssl->out_buf;
+
+    ssl->out_buf = mbedtls_realloc(ssl->out_buf, new_size);
+    if (!ssl->out_buf) {
+        return MBEDTLS_ERR_SSL_ALLOC_FAILED;
+    }
+
+    ssl->out_buf_end = ssl->out_buf + new_size;
+    ssl->out_ctr = ssl->out_buf + ctr_offset;
+    ssl->out_hdr = ssl->out_buf + hdr_offset;
+    ssl->out_len = ssl->out_buf + len_offset;
+    ssl->out_iv = ssl->out_buf + iv_offset;
+    ssl->out_msg = ssl->out_buf + msg_offset;
+
+    return 0;
+}
 
 int mbedtls_ssl_write_certificate( mbedtls_ssl_context *ssl )
 {
@@ -2279,11 +2328,19 @@ int mbedtls_ssl_write_certificate( mbedtls_ssl_context *ssl )
     while( crt != NULL )
     {
         n = crt->raw.len;
-        if( n > MBEDTLS_SSL_OUT_CONTENT_LEN - 3 - i )
+        if( n + 3 > (ssl->out_buf_end - ssl->out_msg) - i )
         {
-            MBEDTLS_SSL_DEBUG_MSG( 1, ( "certificate too large, %d > %d",
-                           i + 3 + n, MBEDTLS_SSL_OUT_CONTENT_LEN ) );
-            return( MBEDTLS_ERR_SSL_CERTIFICATE_TOO_LARGE );
+
+            if( n > MBEDTLS_SSL_OUT_CONTENT_LEN - 3 - i ) {
+                MBEDTLS_SSL_DEBUG_MSG( 1, ( "certificate too large, %d > %d",
+                               i + 3 + n, MBEDTLS_SSL_OUT_CONTENT_LEN ) );
+                return( MBEDTLS_ERR_SSL_CERTIFICATE_TOO_LARGE );
+            }
+            uint32_t new_size = n + 3 + ((ssl->out_msg - ssl->out_buf) + i);
+
+            if ((ret = mbedtls_realloc_out_buf(ssl, new_size)) != 0) {
+                return ret;
+            }
         }
 
         ssl->out_msg[i    ] = (unsigned char)( n >> 16 );
@@ -3903,21 +3960,23 @@ int mbedtls_ssl_setup( mbedtls_ssl_context *ssl,
     /* Set to NULL in case of an error condition */
     ssl->out_buf = NULL;
 
-    ssl->in_buf = mbedtls_calloc( 1, MBEDTLS_SSL_IN_BUFFER_LEN );
+    ssl->in_buf = mbedtls_calloc( 1, MBEDTLS_SSL_MIN_CONTENT_LEN );
     if( ssl->in_buf == NULL )
     {
-        MBEDTLS_SSL_DEBUG_MSG( 1, ( "alloc(%d bytes) failed", MBEDTLS_SSL_IN_BUFFER_LEN) );
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "alloc(%d bytes) failed", MBEDTLS_SSL_MIN_CONTENT_LEN ) );
         ret = MBEDTLS_ERR_SSL_ALLOC_FAILED;
         goto error;
     }
+    ssl->in_buf_end = ssl->in_buf + MBEDTLS_SSL_MIN_CONTENT_LEN;
 
-    ssl->out_buf = mbedtls_calloc( 1, MBEDTLS_SSL_OUT_BUFFER_LEN );
+    ssl->out_buf = mbedtls_calloc( 1, MBEDTLS_SSL_MIN_CONTENT_LEN  );
     if( ssl->out_buf == NULL )
     {
-        MBEDTLS_SSL_DEBUG_MSG( 1, ( "alloc(%d bytes) failed", MBEDTLS_SSL_OUT_BUFFER_LEN) );
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "alloc(%d bytes) failed", MBEDTLS_SSL_MIN_CONTENT_LEN ) );
         ret = MBEDTLS_ERR_SSL_ALLOC_FAILED;
         goto error;
     }
+    ssl->out_buf_end = ssl->out_buf + MBEDTLS_SSL_MIN_CONTENT_LEN;
 
     mbedtls_ssl_reset_in_out_pointers( ssl );
 
@@ -4015,14 +4074,14 @@ int mbedtls_ssl_session_reset_int( mbedtls_ssl_context *ssl, int partial )
     ssl->session_in = NULL;
     ssl->session_out = NULL;
 
-    memset( ssl->out_buf, 0, MBEDTLS_SSL_OUT_BUFFER_LEN );
+    memset( ssl->out_buf, 0, ssl->out_buf_end-ssl->out_buf );
 
 #if defined(MBEDTLS_SSL_DTLS_CLIENT_PORT_REUSE) && defined(MBEDTLS_SSL_SRV_C)
     if( partial == 0 )
 #endif /* MBEDTLS_SSL_DTLS_CLIENT_PORT_REUSE && MBEDTLS_SSL_SRV_C */
     {
         ssl->in_left = 0;
-        memset( ssl->in_buf, 0, MBEDTLS_SSL_IN_BUFFER_LEN );
+        memset( ssl->in_buf, 0, ssl->in_buf_end-ssl->in_buf );
     }
 
 #if defined(MBEDTLS_SSL_HW_RECORD_ACCEL)
@@ -6640,13 +6699,13 @@ void mbedtls_ssl_free( mbedtls_ssl_context *ssl )
 
     if( ssl->out_buf != NULL )
     {
-        mbedtls_platform_zeroize( ssl->out_buf, MBEDTLS_SSL_OUT_BUFFER_LEN );
+        mbedtls_platform_zeroize( ssl->out_buf, ssl->out_buf_end-ssl->out_buf );
         mbedtls_free( ssl->out_buf );
     }
 
     if( ssl->in_buf != NULL )
     {
-        mbedtls_platform_zeroize( ssl->in_buf, MBEDTLS_SSL_IN_BUFFER_LEN );
+        mbedtls_platform_zeroize( ssl->in_buf, ssl->in_buf_end-ssl->in_buf );
         mbedtls_free( ssl->in_buf );
     }
 

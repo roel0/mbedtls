@@ -1210,6 +1210,7 @@ struct mbedtls_ssl_context
      * Record layer (incoming data)
      */
     unsigned char *in_buf;      /*!< input buffer                     */
+    unsigned char *in_buf_end;      /*!< input buffer                     */
     unsigned char *in_ctr;      /*!< 64-bit incoming message counter
                                      TLS: maintained by us
                                      DTLS: read from peer             */
@@ -1252,6 +1253,7 @@ struct mbedtls_ssl_context
      * Record layer (outgoing data)
      */
     unsigned char *out_buf;     /*!< output buffer                    */
+    unsigned char *out_buf_end; /*!< output buffer                    */
     unsigned char *out_ctr;     /*!< 64-bit outgoing message counter  */
     unsigned char *out_hdr;     /*!< start of record header           */
 #if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
