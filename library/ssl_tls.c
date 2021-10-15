@@ -193,7 +193,7 @@ void ssl_write_record_size_limit_ext(mbedtls_ssl_context *ssl,
     size_t *olen)
 {
     unsigned char *p = buf;
-    const unsigned char *end = ssl->out_msg + MBEDTLS_SSL_MAX_CONTENT_LEN;
+    const unsigned char *end = ssl->out_buf_end;
 
     *olen = 0;
 
@@ -2238,6 +2238,8 @@ int mbedtls_realloc_out_buf(mbedtls_ssl_context *ssl, uint32_t new_size)
     uint32_t len_offset = ssl->out_len - ssl->out_buf;
     uint32_t iv_offset = ssl->out_iv - ssl->out_buf;
     uint32_t msg_offset = ssl->out_msg - ssl->out_buf;
+
+    MBEDTLS_SSL_DEBUG_MSG( 1, ( "resize %u -> %u" , ssl->out_buf_end - ssl->out_buf, new_size));
 
     ssl->out_buf = mbedtls_realloc(ssl->out_buf, new_size);
     if (!ssl->out_buf) {

@@ -1952,16 +1952,17 @@ int mbedtls_ssl_flush_output( mbedtls_ssl_context *ssl )
 #endif
     {
         ssl->out_hdr = ssl->out_buf + 8;
-        if (ssl->out_buf_end - ssl->out_buf > MBEDTLS_SSL_MIN_CONTENT_LEN) {
-            if (ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
-                if ((ret = mbedtls_realloc_out_buf(ssl, MBEDTLS_SSL_MIN_CONTENT_LEN)) != 0) {
-                    return ret;
-                }
-            }
-        }
-
     }
     mbedtls_ssl_update_out_pointers( ssl, ssl->transform_out );
+
+    if (ssl->out_buf_end - ssl->out_buf > MBEDTLS_SSL_MIN_CONTENT_LEN) {
+        if (ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
+            if ((ret = mbedtls_realloc_out_buf(ssl, MBEDTLS_SSL_MIN_CONTENT_LEN)) != 0) {
+                return ret;
+            }
+        }
+    }
+
 
     MBEDTLS_SSL_DEBUG_MSG( 2, ( "<= flush output" ) );
 
@@ -2384,12 +2385,12 @@ int mbedtls_ssl_write_handshake_msg( mbedtls_ssl_context *ssl )
      *
      * Note: We deliberately do not check for the MTU or MFL here.
      */
-    if( ssl->out_msglen > MBEDTLS_SSL_OUT_CONTENT_LEN )
+    if( ssl->out_msglen > (uint32_t)(ssl->out_buf_end - ssl->out_buf ))
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "Record too large: "
                                     "size %u, maximum %u",
                                     (unsigned) ssl->out_msglen,
-                                    (unsigned) MBEDTLS_SSL_OUT_CONTENT_LEN ) );
+                                    (unsigned) (ssl->out_buf_end - ssl->out_buf) ) );
         return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
     }
 
@@ -2413,12 +2414,12 @@ int mbedtls_ssl_write_handshake_msg( mbedtls_ssl_context *ssl )
         if( ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM )
         {
             /* Make room for the additional DTLS fields */
-            if( MBEDTLS_SSL_OUT_CONTENT_LEN - ssl->out_msglen < 8 )
+            if( (uint32_t)(ssl->out_buf_end - ssl->out_buf) - ssl->out_msglen < 8 )
             {
                 MBEDTLS_SSL_DEBUG_MSG( 1, ( "DTLS handshake message too large: "
                               "size %u, maximum %u",
                                (unsigned) ( hs_len ),
-                               (unsigned) ( MBEDTLS_SSL_OUT_CONTENT_LEN - 12 ) ) );
+                               (unsigned) ( ssl->out_buf_end - ssl->out_buf - 12 ) ) );
                 return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
             }
 
@@ -2547,18 +2548,9 @@ int mbedtls_ssl_write_record( mbedtls_ssl_context *ssl, uint8_t force_flush )
             mbedtls_record rec;
 
             rec.buf         = ssl->out_iv;
-            rec.buf_len     = (ssl->out_buf_end - ssl->out_buf) -
-                ( ssl->out_iv - ssl->out_buf );
+            rec.buf_len     = (ssl->out_buf_end - ssl->out_buf) - ( ssl->out_iv - ssl->out_buf );
             rec.data_len    = ssl->out_msglen;
             rec.data_offset = ssl->out_msg - rec.buf;
-
-            if (rec.data_len > rec.buf_len) {
-                uint32_t new_size = mbedtls_ssl_out_hdr_len(ssl) + rec.data_len - rec.buf_len + ssl->out_buf_end - ssl->out_buf;
-
-                if ((ret = mbedtls_realloc_out_buf(ssl, new_size)) != 0) {
-                    return ret;
-                }
-            }
 
             memcpy( &rec.ctr[0], ssl->out_ctr, 8 );
             mbedtls_ssl_write_version( ssl->major_ver, ssl->minor_ver,
@@ -5479,6 +5471,14 @@ static int ssl_write_real( mbedtls_ssl_context *ssl,
          * copy the data into the internal buffers and setup the data structure
          * to keep track of partial writes
          */
+        if (len > (uint32_t)(ssl->out_buf_end - ssl->out_buf) - (uint32_t)(ssl->out_msg - ssl->out_buf)) {
+            uint32_t new_size = MBEDTLS_SSL_MIN_CONTENT_LEN + mbedtls_ssl_out_hdr_len(ssl) + (ssl->out_msg - ssl->out_buf) + len;
+
+            if ((ret = mbedtls_realloc_out_buf(ssl, new_size)) != 0) {
+                return ret;
+            }
+        }
+
         ssl->out_msglen  = len;
         ssl->out_msgtype = MBEDTLS_SSL_MSG_APPLICATION_DATA;
         memcpy( ssl->out_msg, buf, len );
