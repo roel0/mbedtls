@@ -7,7 +7,7 @@ Basic usage, to read the Mbed TLS or Mbed Crypto configuration:
     if 'MBEDTLS_RSA_C' in config: print('RSA is enabled')
 """
 
-## Copyright (C) 2019, ARM Limited, All Rights Reserved
+## Copyright The Mbed TLS Contributors
 ## SPDX-License-Identifier: Apache-2.0
 ##
 ## Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -21,21 +21,19 @@ Basic usage, to read the Mbed TLS or Mbed Crypto configuration:
 ## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 ## See the License for the specific language governing permissions and
 ## limitations under the License.
-##
-## This file is part of Mbed TLS (https://tls.mbed.org)
 
 import os
 import re
 
 class Setting:
-    """Representation of one Mbed TLS config.h setting.
+    """Representation of one Mbed TLS mbedtls_config.h setting.
 
     Fields:
     * name: the symbol name ('MBEDTLS_xxx').
     * value: the value of the macro. The empty string for a plain #define
       with no value.
     * active: True if name is defined, False if a #define for name is
-      present in config.h but commented out.
+      present in mbedtls_config.h but commented out.
     * section: the name of the section that contains this symbol.
     """
     # pylint: disable=too-few-public-methods
@@ -149,6 +147,15 @@ class Config:
             setting.active = adapter(setting.name, setting.active,
                                      setting.section)
 
+    def change_matching(self, regexs, enable):
+        """Change all symbols matching one of the regexs to the desired state."""
+        if not regexs:
+            return
+        regex = re.compile('|'.join(regexs))
+        for setting in self.settings.values():
+            if regex.search(setting.name):
+                setting.active = enable
+
 def is_full_section(section):
     """Is this section affected by "config.py full" and friends?"""
     return section.endswith('support') or section.endswith('modules')
@@ -159,40 +166,66 @@ def realfull_adapter(_name, active, section):
         return active
     return True
 
+# The goal of the full configuration is to have everything that can be tested
+# together. This includes deprecated or insecure options. It excludes:
+# * Options that require additional build dependencies or unusual hardware.
+# * Options that make testing less effective.
+# * Options that are incompatible with other options, or more generally that
+#   interact with other parts of the code in such a way that a bulk enabling
+#   is not a good way to test them.
+# * Options that remove features.
+EXCLUDE_FROM_FULL = frozenset([
+    #pylint: disable=line-too-long
+    'MBEDTLS_CTR_DRBG_USE_128_BIT_KEY', # interacts with ENTROPY_FORCE_SHA256
+    'MBEDTLS_DEPRECATED_REMOVED', # conflicts with deprecated options
+    'MBEDTLS_DEPRECATED_WARNING', # conflicts with deprecated options
+    'MBEDTLS_ECDH_VARIANT_EVEREST_ENABLED', # influences the use of ECDH in TLS
+    'MBEDTLS_ECP_NO_FALLBACK', # removes internal ECP implementation
+    'MBEDTLS_ECP_RESTARTABLE', # incompatible with USE_PSA_CRYPTO
+    'MBEDTLS_ENTROPY_FORCE_SHA256', # interacts with CTR_DRBG_128_BIT_KEY
+    'MBEDTLS_HAVE_SSE2', # hardware dependency
+    'MBEDTLS_MEMORY_BACKTRACE', # depends on MEMORY_BUFFER_ALLOC_C
+    'MBEDTLS_MEMORY_BUFFER_ALLOC_C', # makes sanitizers (e.g. ASan) less effective
+    'MBEDTLS_MEMORY_DEBUG', # depends on MEMORY_BUFFER_ALLOC_C
+    'MBEDTLS_NO_64BIT_MULTIPLICATION', # influences anything that uses bignum
+    'MBEDTLS_NO_DEFAULT_ENTROPY_SOURCES', # removes a feature
+    'MBEDTLS_NO_PLATFORM_ENTROPY', # removes a feature
+    'MBEDTLS_NO_UDBL_DIVISION', # influences anything that uses bignum
+    'MBEDTLS_PLATFORM_NO_STD_FUNCTIONS', # removes a feature
+    'MBEDTLS_PSA_CRYPTO_CONFIG', # toggles old/new style PSA config
+    'MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG', # behavior change + build dependency
+    'MBEDTLS_PSA_CRYPTO_KEY_ID_ENCODES_OWNER', # incompatible with USE_PSA_CRYPTO
+    'MBEDTLS_PSA_CRYPTO_SPM', # platform dependency (PSA SPM)
+    'MBEDTLS_PSA_INJECT_ENTROPY', # build dependency (hook functions)
+    'MBEDTLS_RSA_NO_CRT', # influences the use of RSA in X.509 and TLS
+    'MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN', # build dependency (clang+memsan)
+    'MBEDTLS_TEST_CONSTANT_FLOW_VALGRIND', # build dependency (valgrind headers)
+    'MBEDTLS_X509_REMOVE_INFO', # removes a feature
+])
+
+def is_seamless_alt(name):
+    """Whether the xxx_ALT symbol should be included in the full configuration.
+
+    Include alternative implementations of platform functions, which are
+    configurable function pointers that default to the built-in function.
+    This way we test that the function pointers exist and build correctly
+    without changing the behavior, and tests can verify that the function
+    pointers are used by modifying those pointers.
+
+    Exclude alternative implementations of library functions since they require
+    an implementation of the relevant functions and an xxx_alt.h header.
+    """
+    if name == 'MBEDTLS_PLATFORM_SETUP_TEARDOWN_ALT':
+        # Similar to non-platform xxx_ALT, requires platform_alt.h
+        return False
+    return name.startswith('MBEDTLS_PLATFORM_')
+
 def include_in_full(name):
     """Rules for symbols in the "full" configuration."""
-    if re.search(r'PLATFORM_[A-Z0-9]+_ALT', name):
-        return True
-    if name in [
-            'MBEDTLS_DEPRECATED_REMOVED',
-            'MBEDTLS_ECDH_VARIANT_EVEREST_ENABLED',
-            'MBEDTLS_ECP_RESTARTABLE',
-            'MBEDTLS_HAVE_SSE2',
-            'MBEDTLS_MEMORY_BACKTRACE',
-            'MBEDTLS_MEMORY_BUFFER_ALLOC_C',
-            'MBEDTLS_MEMORY_DEBUG',
-            'MBEDTLS_NO_64BIT_MULTIPLICATION',
-            'MBEDTLS_NO_DEFAULT_ENTROPY_SOURCES',
-            'MBEDTLS_NO_PLATFORM_ENTROPY',
-            'MBEDTLS_NO_UDBL_DIVISION',
-            'MBEDTLS_PKCS11_C',
-            'MBEDTLS_PLATFORM_NO_STD_FUNCTIONS',
-            'MBEDTLS_PSA_CRYPTO_SPM',
-            'MBEDTLS_PSA_INJECT_ENTROPY',
-            'MBEDTLS_REMOVE_3DES_CIPHERSUITES',
-            'MBEDTLS_REMOVE_ARC4_CIPHERSUITES',
-            'MBEDTLS_RSA_NO_CRT',
-            'MBEDTLS_SSL_HW_RECORD_ACCEL',
-            'MBEDTLS_SSL_PROTO_SSL3',
-            'MBEDTLS_SSL_SRV_SUPPORT_SSLV2_CLIENT_HELLO',
-            'MBEDTLS_TEST_NULL_ENTROPY',
-            'MBEDTLS_X509_ALLOW_EXTENSIONS_NON_V3',
-            'MBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION',
-            'MBEDTLS_ZLIB_SUPPORT',
-    ]:
+    if name in EXCLUDE_FROM_FULL:
         return False
     if name.endswith('_ALT'):
-        return False
+        return is_seamless_alt(name)
     return True
 
 def full_adapter(name, active, section):
@@ -201,26 +234,32 @@ def full_adapter(name, active, section):
         return active
     return include_in_full(name)
 
+# The baremetal configuration excludes options that require a library or
+# operating system feature that is typically not present on bare metal
+# systems. Features that are excluded from "full" won't be in "baremetal"
+# either (unless explicitly turned on in baremetal_adapter) so they don't
+# need to be repeated here.
+EXCLUDE_FROM_BAREMETAL = frozenset([
+    #pylint: disable=line-too-long
+    'MBEDTLS_ENTROPY_NV_SEED', # requires a filesystem and FS_IO or alternate NV seed hooks
+    'MBEDTLS_FS_IO', # requires a filesystem
+    'MBEDTLS_HAVE_TIME', # requires a clock
+    'MBEDTLS_HAVE_TIME_DATE', # requires a clock
+    'MBEDTLS_NET_C', # requires POSIX-like networking
+    'MBEDTLS_PLATFORM_FPRINTF_ALT', # requires FILE* from stdio.h
+    'MBEDTLS_PLATFORM_NV_SEED_ALT', # requires a filesystem and ENTROPY_NV_SEED
+    'MBEDTLS_PLATFORM_TIME_ALT', # requires a clock and HAVE_TIME
+    'MBEDTLS_PSA_CRYPTO_SE_C', # requires a filesystem and PSA_CRYPTO_STORAGE_C
+    'MBEDTLS_PSA_CRYPTO_STORAGE_C', # requires a filesystem
+    'MBEDTLS_PSA_ITS_FILE_C', # requires a filesystem
+    'MBEDTLS_THREADING_C', # requires a threading interface
+    'MBEDTLS_THREADING_PTHREAD', # requires pthread
+    'MBEDTLS_TIMING_C', # requires a clock
+])
+
 def keep_in_baremetal(name):
     """Rules for symbols in the "baremetal" configuration."""
-    if name in [
-            'MBEDTLS_DEPRECATED_WARNING',
-            'MBEDTLS_ENTROPY_NV_SEED',
-            'MBEDTLS_FS_IO',
-            'MBEDTLS_HAVEGE_C',
-            'MBEDTLS_HAVE_TIME',
-            'MBEDTLS_HAVE_TIME_DATE',
-            'MBEDTLS_MEMORY_BACKTRACE',
-            'MBEDTLS_MEMORY_BUFFER_ALLOC_C',
-            'MBEDTLS_NET_C',
-            'MBEDTLS_PLATFORM_FPRINTF_ALT',
-            'MBEDTLS_PLATFORM_TIME_ALT',
-            'MBEDTLS_PSA_CRYPTO_STORAGE_C',
-            'MBEDTLS_PSA_ITS_FILE_C',
-            'MBEDTLS_THREADING_C',
-            'MBEDTLS_THREADING_PTHREAD',
-            'MBEDTLS_TIMING_C',
-    ]:
+    if name in EXCLUDE_FROM_BAREMETAL:
         return False
     return True
 
@@ -229,6 +268,7 @@ def baremetal_adapter(name, active, section):
     if not is_full_section(section):
         return active
     if name == 'MBEDTLS_NO_PLATFORM_ENTROPY':
+        # No OS-provided entropy source
         return True
     return include_in_full(name) and keep_in_baremetal(name)
 
@@ -239,10 +279,8 @@ def include_in_crypto(name):
        name.startswith('MBEDTLS_KEY_EXCHANGE_'):
         return False
     if name in [
-            'MBEDTLS_CERTS_C',
-            'MBEDTLS_DEBUG_C',
-            'MBEDTLS_NET_C',
-            'MBEDTLS_PKCS11_C',
+            'MBEDTLS_DEBUG_C', # part of libmbedtls
+            'MBEDTLS_NET_C', # part of libmbedtls
     ]:
         return False
     return True
@@ -261,6 +299,21 @@ def crypto_adapter(adapter):
         return adapter(name, active, section)
     return continuation
 
+def no_deprecated_adapter(adapter):
+    """Modify an adapter to disable deprecated symbols.
+
+    ``no_deprecated_adapter(adapter)(name, active, section)`` is like
+    ``adapter(name, active, section)``, but unsets all deprecated symbols
+    and sets ``MBEDTLS_DEPRECATED_REMOVED``.
+    """
+    def continuation(name, active, section):
+        if name == 'MBEDTLS_DEPRECATED_REMOVED':
+            return True
+        if adapter is None:
+            return active
+        return adapter(name, active, section)
+    return continuation
+
 class ConfigFile(Config):
     """Representation of the Mbed TLS configuration read for a file.
 
@@ -268,7 +321,7 @@ class ConfigFile(Config):
     and modify the configuration.
     """
 
-    _path_in_tree = 'include/mbedtls/config.h'
+    _path_in_tree = 'include/mbedtls/mbedtls_config.h'
     default_path = [_path_in_tree,
                     os.path.join(os.path.dirname(__file__),
                                  os.pardir,
@@ -279,9 +332,13 @@ class ConfigFile(Config):
     def __init__(self, filename=None):
         """Read the Mbed TLS configuration file."""
         if filename is None:
-            for filename in self.default_path:
-                if os.path.lexists(filename):
+            for candidate in self.default_path:
+                if os.path.lexists(candidate):
+                    filename = candidate
                     break
+            else:
+                raise Exception('Mbed TLS configuration file not found',
+                                self.default_path)
         super().__init__()
         self.filename = filename
         self.current_section = 'header'
@@ -306,7 +363,7 @@ class ConfigFile(Config):
     _config_line_regexp = re.compile(r'|'.join([_define_line_regexp,
                                                 _section_line_regexp]))
     def _parse_line(self, line):
-        """Parse a line in config.h and return the corresponding template."""
+        """Parse a line in mbedtls_config.h and return the corresponding template."""
         line = line.rstrip('\r\n')
         m = re.match(self._config_line_regexp, line)
         if m is None:
@@ -327,7 +384,7 @@ class ConfigFile(Config):
             return template
 
     def _format_template(self, name, indent, middle):
-        """Build a line for config.h for the given setting.
+        """Build a line for mbedtls_config.h for the given setting.
 
         The line has the form "<indent>#define <name> <value>"
         where <middle> is "#define <name> ".
@@ -371,7 +428,7 @@ class ConfigFile(Config):
 
 if __name__ == '__main__':
     def main():
-        """Command line config.h manipulation tool."""
+        """Command line mbedtls_config.h manipulation tool."""
         parser = argparse.ArgumentParser(description="""
         Mbed TLS and Mbed Crypto configuration file manipulation tool.
         """)
@@ -405,11 +462,21 @@ if __name__ == '__main__':
         parser_set.add_argument('symbol', metavar='SYMBOL')
         parser_set.add_argument('value', metavar='VALUE', nargs='?',
                                 default='')
+        parser_set_all = subparsers.add_parser('set-all',
+                                               help="""Uncomment all #define
+                                               whose name contains a match for
+                                               REGEX.""")
+        parser_set_all.add_argument('regexs', metavar='REGEX', nargs='*')
         parser_unset = subparsers.add_parser('unset',
                                              help="""Comment out the #define
                                              for SYMBOL. Do nothing if none
                                              is present.""")
         parser_unset.add_argument('symbol', metavar='SYMBOL')
+        parser_unset_all = subparsers.add_parser('unset-all',
+                                                 help="""Comment out all #define
+                                                 whose name contains a match for
+                                                 REGEX.""")
+        parser_unset_all.add_argument('regexs', metavar='REGEX', nargs='*')
 
         def add_adapter(name, function, description):
             subparser = subparsers.add_parser(name, help=description)
@@ -421,6 +488,10 @@ if __name__ == '__main__':
                     """Uncomment most features.
                     Exclude alternative implementations and platform support
                     options, as well as some options that are awkward to test.
+                    """)
+        add_adapter('full_no_deprecated', no_deprecated_adapter(full_adapter),
+                    """Uncomment most non-deprecated features.
+                    Like "full", but without deprecated features.
                     """)
         add_adapter('realfull', realfull_adapter,
                     """Uncomment all boolean #defines.
@@ -444,7 +515,7 @@ if __name__ == '__main__':
                 value = config[args.symbol]
                 if value:
                     sys.stdout.write(value + '\n')
-            return args.symbol not in config
+            return 0 if args.symbol in config else 1
         elif args.command == 'set':
             if not args.force and args.symbol not in config.settings:
                 sys.stderr.write("A #define for the symbol {} "
@@ -452,11 +523,16 @@ if __name__ == '__main__':
                                  .format(args.symbol, config.filename))
                 return 1
             config.set(args.symbol, value=args.value)
+        elif args.command == 'set-all':
+            config.change_matching(args.regexs, True)
         elif args.command == 'unset':
             config.unset(args.symbol)
+        elif args.command == 'unset-all':
+            config.change_matching(args.regexs, False)
         else:
             config.adapt(args.adapter)
         config.write(args.write)
+        return 0
 
     # Import modules only used by main only if main is defined and called.
     # pylint: disable=wrong-import-position

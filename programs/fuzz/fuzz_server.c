@@ -1,15 +1,19 @@
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+
 #include "mbedtls/ssl.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
-#include "mbedtls/certs.h"
 #include "mbedtls/ssl_ticket.h"
+#include "test/certs.h"
 #include "common.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 
 
-#ifdef MBEDTLS_SSL_SRV_C
+#if defined(MBEDTLS_SSL_SRV_C) && \
+    defined(MBEDTLS_ENTROPY_C) && \
+    defined(MBEDTLS_CTR_DRBG_C)
 const char *pers = "fuzz_server";
 static int initialized = 0;
 #if defined(MBEDTLS_X509_CRT_PARSE_C) && defined(MBEDTLS_PEM_PARSE_C)
@@ -18,18 +22,20 @@ static mbedtls_pk_context pkey;
 #endif
 const char *alpn_list[3];
 
-#if defined(MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED)
+#if defined(MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED)
 const unsigned char psk[] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
     0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
 };
 const char psk_id[] = "Client_identity";
 #endif
-#endif // MBEDTLS_SSL_SRV_C
+#endif // MBEDTLS_SSL_SRV_C && MBEDTLS_ENTROPY_C && MBEDTLS_CTR_DRBG_C
 
 
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-#ifdef MBEDTLS_SSL_SRV_C
+#if defined(MBEDTLS_SSL_SRV_C) && \
+    defined(MBEDTLS_ENTROPY_C) && \
+    defined(MBEDTLS_CTR_DRBG_C)
     int ret;
     size_t len;
     mbedtls_ssl_context ssl;
@@ -50,6 +56,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     options = Data[Size - 1];
 
     if (initialized == 0) {
+        mbedtls_ctr_drbg_init( &ctr_drbg );
+        mbedtls_entropy_init( &entropy );
+
+        if( mbedtls_ctr_drbg_seed( &ctr_drbg, dummy_entropy, &entropy,
+                                  (const unsigned char *) pers, strlen( pers ) ) != 0 )
+            return 1;
+
 #if defined(MBEDTLS_X509_CRT_PARSE_C) && defined(MBEDTLS_PEM_PARSE_C)
         mbedtls_x509_crt_init( &srvcert );
         mbedtls_pk_init( &pkey );
@@ -60,7 +73,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
                                    mbedtls_test_cas_pem_len ) != 0)
             return 1;
         if (mbedtls_pk_parse_key( &pkey, (const unsigned char *) mbedtls_test_srv_key,
-                                 mbedtls_test_srv_key_len, NULL, 0 ) != 0)
+                                 mbedtls_test_srv_key_len, NULL, 0,
+                                 dummy_random, &ctr_drbg ) != 0)
             return 1;
 #endif
 
@@ -74,16 +88,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     }
     mbedtls_ssl_init( &ssl );
     mbedtls_ssl_config_init( &conf );
-    mbedtls_ctr_drbg_init( &ctr_drbg );
-    mbedtls_entropy_init( &entropy );
 #if defined(MBEDTLS_SSL_SESSION_TICKETS)
     mbedtls_ssl_ticket_init( &ticket_ctx );
 #endif
-
-    if( mbedtls_ctr_drbg_seed( &ctr_drbg, dummy_entropy, &entropy,
-                              (const unsigned char *) pers, strlen( pers ) ) != 0 )
-        goto exit;
-
 
     if( mbedtls_ssl_config_defaults( &conf,
                                     MBEDTLS_SSL_IS_SERVER,
@@ -121,16 +128,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
                                             &ticket_ctx );
     }
 #endif
-#if defined(MBEDTLS_SSL_TRUNCATED_HMAC)
-    mbedtls_ssl_conf_truncated_hmac( &conf, (options & 0x8) ? MBEDTLS_SSL_TRUNC_HMAC_ENABLED : MBEDTLS_SSL_TRUNC_HMAC_DISABLED);
-#endif
 #if defined(MBEDTLS_SSL_EXTENDED_MASTER_SECRET)
     mbedtls_ssl_conf_extended_master_secret( &conf, (options & 0x10) ? MBEDTLS_SSL_EXTENDED_MS_DISABLED : MBEDTLS_SSL_EXTENDED_MS_ENABLED);
 #endif
 #if defined(MBEDTLS_SSL_ENCRYPT_THEN_MAC)
     mbedtls_ssl_conf_encrypt_then_mac( &conf, (options & 0x20) ? MBEDTLS_SSL_ETM_ENABLED : MBEDTLS_SSL_ETM_DISABLED);
 #endif
-#if defined(MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED)
+#if defined(MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED)
     if (options & 0x40) {
         mbedtls_ssl_conf_psk( &conf, psk, sizeof( psk ),
                              (const unsigned char *) psk_id, sizeof( psk_id ) - 1 );
@@ -179,7 +183,7 @@ exit:
 #else
     (void) Data;
     (void) Size;
-#endif //MBEDTLS_SSL_SRV_C
+#endif /* MBEDTLS_SSL_SRV_C && MBEDTLS_ENTROPY_C && MBEDTLS_CTR_DRBG_C */
 
     return 0;
 }

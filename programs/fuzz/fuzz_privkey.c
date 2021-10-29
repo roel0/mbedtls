@@ -1,6 +1,9 @@
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+
 #include <stdint.h>
 #include <stdlib.h>
 #include "mbedtls/pk.h"
+#include "common.h"
 
 //4 Kb should be enough for every bug ;-)
 #define MAX_LEN 0x1000
@@ -17,7 +20,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     }
 
     mbedtls_pk_init( &pk );
-    ret = mbedtls_pk_parse_key( &pk, Data, Size, NULL, 0 );
+    ret = mbedtls_pk_parse_key( &pk, Data, Size, NULL, 0,
+                                dummy_random, NULL );
     if (ret == 0) {
 #if defined(MBEDTLS_RSA_C)
         if( mbedtls_pk_get_type( &pk ) == MBEDTLS_PK_RSA )
@@ -44,20 +48,26 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
         else
 #endif
 #if defined(MBEDTLS_ECP_C)
-        if( mbedtls_pk_get_type( &pk ) == MBEDTLS_PK_ECKEY )
+        if( mbedtls_pk_get_type( &pk ) == MBEDTLS_PK_ECKEY ||
+            mbedtls_pk_get_type( &pk ) == MBEDTLS_PK_ECKEY_DH )
         {
-            mbedtls_ecp_keypair *ecp;
+            mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( pk );
+            mbedtls_ecp_group_id grp_id = ecp->grp.id;
+            const mbedtls_ecp_curve_info *curve_info =
+                mbedtls_ecp_curve_info_from_grp_id( grp_id );
 
-            ecp = mbedtls_pk_ec( pk );
-            if (ecp) {
-                ret = 0;
-            }
+            /* If the curve is not supported, the key should not have been
+             * accepted. */
+            if( curve_info == NULL )
+                abort( );
         }
         else
 #endif
-            {
-                ret = 0;
-            }
+        {
+            /* The key is valid but is not of a supported type.
+             * This should not happen. */
+            abort( );
+        }
     }
     mbedtls_pk_free( &pk );
 #else

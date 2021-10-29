@@ -2,9 +2,20 @@
 
 # compat.sh
 #
-# This file is part of mbed TLS (https://tls.mbed.org)
+# Copyright The Mbed TLS Contributors
+# SPDX-License-Identifier: Apache-2.0
 #
-# Copyright (c) 2012-2016, ARM Limited, All Rights Reserved
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
 # Purpose
 #
@@ -56,18 +67,17 @@ else
 fi
 
 # default values for options
-MODES="tls1 tls1_1 tls1_2 dtls1 dtls1_2"
+MODES="tls1_2 dtls1_2"
 VERIFIES="NO YES"
 TYPES="ECDSA RSA PSK"
 FILTER=""
 # exclude:
 # - NULL: excluded from our default config
-# - RC4, single-DES: requires legacy OpenSSL/GnuTLS versions
 #   avoid plain DES but keep 3DES-EDE-CBC (mbedTLS), DES-CBC3 (OpenSSL)
-# - ARIA: not in default config.h + requires OpenSSL >= 1.1.1
+# - ARIA: not in default mbedtls_config.h + requires OpenSSL >= 1.1.1
 # - ChachaPoly: requires OpenSSL >= 1.1.0
 # - 3DES: not in default config
-EXCLUDE='NULL\|DES\|RC4\|ARCFOUR\|ARIA\|CHACHA20-POLY1305'
+EXCLUDE='NULL\|DES\|ARIA\|CHACHA20-POLY1305'
 VERBOSE=""
 MEMCHECK=0
 PEERS="OpenSSL$PEER_GNUTLS mbedTLS"
@@ -79,12 +89,12 @@ PEERS="OpenSSL$PEER_GNUTLS mbedTLS"
 print_usage() {
     echo "Usage: $0"
     printf "  -h|--help\tPrint this help.\n"
-    printf "  -f|--filter\tOnly matching ciphersuites are tested (Default: '$FILTER')\n"
-    printf "  -e|--exclude\tMatching ciphersuites are excluded (Default: '$EXCLUDE')\n"
-    printf "  -m|--modes\tWhich modes to perform (Default: '$MODES')\n"
-    printf "  -t|--types\tWhich key exchange type to perform (Default: '$TYPES')\n"
-    printf "  -V|--verify\tWhich verification modes to perform (Default: '$VERIFIES')\n"
-    printf "  -p|--peers\tWhich peers to use (Default: '$PEERS')\n"
+    printf "  -f|--filter\tOnly matching ciphersuites are tested (Default: '%s')\n" "$FILTER"
+    printf "  -e|--exclude\tMatching ciphersuites are excluded (Default: '%s')\n" "$EXCLUDE"
+    printf "  -m|--modes\tWhich modes to perform (Default: '%s')\n" "$MODES"
+    printf "  -t|--types\tWhich key exchange type to perform (Default: '%s')\n" "$TYPES"
+    printf "  -V|--verify\tWhich verification modes to perform (Default: '%s')\n" "$VERIFIES"
+    printf "  -p|--peers\tWhich peers to use (Default: '%s')\n" "$PEERS"
     printf "            \tAlso available: GnuTLS (needs v3.2.15 or higher)\n"
     printf "  -M|--memcheck\tCheck memory leaks and errors.\n"
     printf "  -v|--verbose\tSet verbose output.\n"
@@ -145,22 +155,13 @@ log() {
 # is_dtls <mode>
 is_dtls()
 {
-    test "$1" = "dtls1" -o "$1" = "dtls1_2"
+    test "$1" = "dtls1_2"
 }
 
 # minor_ver <mode>
 minor_ver()
 {
     case "$1" in
-        ssl3)
-            echo 0
-            ;;
-        tls1)
-            echo 1
-            ;;
-        tls1_1|dtls1)
-            echo 2
-            ;;
         tls1_2|dtls1_2)
             echo 3
             ;;
@@ -176,11 +177,7 @@ filter()
   LIST="$1"
   NEW_LIST=""
 
-  if is_dtls "$MODE"; then
-      EXCLMODE="$EXCLUDE"'\|RC4\|ARCFOUR'
-  else
-      EXCLMODE="$EXCLUDE"
-  fi
+  EXCLMODE="$EXCLUDE"
 
   for i in $LIST;
   do
@@ -251,21 +248,18 @@ add_common_ciphersuites()
             then
                 M_CIPHERS="$M_CIPHERS                       \
                     TLS-ECDHE-ECDSA-WITH-NULL-SHA           \
-                    TLS-ECDHE-ECDSA-WITH-RC4-128-SHA        \
                     TLS-ECDHE-ECDSA-WITH-3DES-EDE-CBC-SHA   \
                     TLS-ECDHE-ECDSA-WITH-AES-128-CBC-SHA    \
                     TLS-ECDHE-ECDSA-WITH-AES-256-CBC-SHA    \
                     "
                 G_CIPHERS="$G_CIPHERS                       \
                     +ECDHE-ECDSA:+NULL:+SHA1                \
-                    +ECDHE-ECDSA:+ARCFOUR-128:+SHA1         \
                     +ECDHE-ECDSA:+3DES-CBC:+SHA1            \
                     +ECDHE-ECDSA:+AES-128-CBC:+SHA1         \
                     +ECDHE-ECDSA:+AES-256-CBC:+SHA1         \
                     "
                 O_CIPHERS="$O_CIPHERS               \
                     ECDHE-ECDSA-NULL-SHA            \
-                    ECDHE-ECDSA-RC4-SHA             \
                     ECDHE-ECDSA-DES-CBC3-SHA        \
                     ECDHE-ECDSA-AES128-SHA          \
                     ECDHE-ECDSA-AES256-SHA          \
@@ -306,8 +300,6 @@ add_common_ciphersuites()
                 TLS-RSA-WITH-AES-128-CBC-SHA            \
                 TLS-RSA-WITH-CAMELLIA-128-CBC-SHA       \
                 TLS-RSA-WITH-3DES-EDE-CBC-SHA           \
-                TLS-RSA-WITH-RC4-128-SHA                \
-                TLS-RSA-WITH-RC4-128-MD5                \
                 TLS-RSA-WITH-NULL-MD5                   \
                 TLS-RSA-WITH-NULL-SHA                   \
                 "
@@ -322,8 +314,6 @@ add_common_ciphersuites()
                 +RSA:+AES-128-CBC:+SHA1                 \
                 +RSA:+CAMELLIA-128-CBC:+SHA1            \
                 +RSA:+3DES-CBC:+SHA1                    \
-                +RSA:+ARCFOUR-128:+SHA1                 \
-                +RSA:+ARCFOUR-128:+MD5                  \
                 +RSA:+NULL:+MD5                         \
                 +RSA:+NULL:+SHA1                        \
                 "
@@ -338,8 +328,6 @@ add_common_ciphersuites()
                 AES128-SHA                      \
                 CAMELLIA128-SHA                 \
                 DES-CBC3-SHA                    \
-                RC4-SHA                         \
-                RC4-MD5                         \
                 NULL-MD5                        \
                 NULL-SHA                        \
                 "
@@ -349,21 +337,18 @@ add_common_ciphersuites()
                     TLS-ECDHE-RSA-WITH-AES-128-CBC-SHA      \
                     TLS-ECDHE-RSA-WITH-AES-256-CBC-SHA      \
                     TLS-ECDHE-RSA-WITH-3DES-EDE-CBC-SHA     \
-                    TLS-ECDHE-RSA-WITH-RC4-128-SHA          \
                     TLS-ECDHE-RSA-WITH-NULL-SHA             \
                     "
                 G_CIPHERS="$G_CIPHERS                       \
                     +ECDHE-RSA:+AES-128-CBC:+SHA1           \
                     +ECDHE-RSA:+AES-256-CBC:+SHA1           \
                     +ECDHE-RSA:+3DES-CBC:+SHA1              \
-                    +ECDHE-RSA:+ARCFOUR-128:+SHA1           \
                     +ECDHE-RSA:+NULL:+SHA1                  \
                     "
                 O_CIPHERS="$O_CIPHERS               \
                     ECDHE-RSA-AES256-SHA            \
                     ECDHE-RSA-AES128-SHA            \
                     ECDHE-RSA-DES-CBC3-SHA          \
-                    ECDHE-RSA-RC4-SHA               \
                     ECDHE-RSA-NULL-SHA              \
                     "
             fi
@@ -417,19 +402,16 @@ add_common_ciphersuites()
 
         "PSK")
             M_CIPHERS="$M_CIPHERS                       \
-                TLS-PSK-WITH-RC4-128-SHA                \
                 TLS-PSK-WITH-3DES-EDE-CBC-SHA           \
                 TLS-PSK-WITH-AES-128-CBC-SHA            \
                 TLS-PSK-WITH-AES-256-CBC-SHA            \
                 "
             G_CIPHERS="$G_CIPHERS                       \
-                +PSK:+ARCFOUR-128:+SHA1                 \
                 +PSK:+3DES-CBC:+SHA1                    \
                 +PSK:+AES-128-CBC:+SHA1                 \
                 +PSK:+AES-256-CBC:+SHA1                 \
                 "
             O_CIPHERS="$O_CIPHERS               \
-                PSK-RC4-SHA                     \
                 PSK-3DES-EDE-CBC-SHA            \
                 PSK-AES128-CBC-SHA              \
                 PSK-AES256-CBC-SHA              \
@@ -457,14 +439,12 @@ add_openssl_ciphersuites()
             then
                 M_CIPHERS="$M_CIPHERS                       \
                     TLS-ECDH-ECDSA-WITH-NULL-SHA            \
-                    TLS-ECDH-ECDSA-WITH-RC4-128-SHA         \
                     TLS-ECDH-ECDSA-WITH-3DES-EDE-CBC-SHA    \
                     TLS-ECDH-ECDSA-WITH-AES-128-CBC-SHA     \
                     TLS-ECDH-ECDSA-WITH-AES-256-CBC-SHA     \
                     "
                 O_CIPHERS="$O_CIPHERS               \
                     ECDH-ECDSA-NULL-SHA             \
-                    ECDH-ECDSA-RC4-SHA              \
                     ECDH-ECDSA-DES-CBC3-SHA         \
                     ECDH-ECDSA-AES128-SHA           \
                     ECDH-ECDSA-AES256-SHA           \
@@ -650,13 +630,11 @@ add_gnutls_ciphersuites()
                 TLS-DHE-PSK-WITH-3DES-EDE-CBC-SHA               \
                 TLS-DHE-PSK-WITH-AES-128-CBC-SHA                \
                 TLS-DHE-PSK-WITH-AES-256-CBC-SHA                \
-                TLS-DHE-PSK-WITH-RC4-128-SHA                    \
                 "
             G_CIPHERS="$G_CIPHERS                               \
                 +DHE-PSK:+3DES-CBC:+SHA1                        \
                 +DHE-PSK:+AES-128-CBC:+SHA1                     \
                 +DHE-PSK:+AES-256-CBC:+SHA1                     \
-                +DHE-PSK:+ARCFOUR-128:+SHA1                     \
                 "
             if [ `minor_ver "$MODE"` -gt 0 ]
             then
@@ -664,21 +642,17 @@ add_gnutls_ciphersuites()
                     TLS-ECDHE-PSK-WITH-AES-256-CBC-SHA          \
                     TLS-ECDHE-PSK-WITH-AES-128-CBC-SHA          \
                     TLS-ECDHE-PSK-WITH-3DES-EDE-CBC-SHA         \
-                    TLS-ECDHE-PSK-WITH-RC4-128-SHA              \
                     TLS-RSA-PSK-WITH-3DES-EDE-CBC-SHA           \
                     TLS-RSA-PSK-WITH-AES-256-CBC-SHA            \
                     TLS-RSA-PSK-WITH-AES-128-CBC-SHA            \
-                    TLS-RSA-PSK-WITH-RC4-128-SHA                \
                     "
                 G_CIPHERS="$G_CIPHERS                           \
                     +ECDHE-PSK:+3DES-CBC:+SHA1                  \
                     +ECDHE-PSK:+AES-128-CBC:+SHA1               \
                     +ECDHE-PSK:+AES-256-CBC:+SHA1               \
-                    +ECDHE-PSK:+ARCFOUR-128:+SHA1               \
                     +RSA-PSK:+3DES-CBC:+SHA1                    \
                     +RSA-PSK:+AES-256-CBC:+SHA1                 \
                     +RSA-PSK:+AES-128-CBC:+SHA1                 \
-                    +RSA-PSK:+ARCFOUR-128:+SHA1                 \
                     "
             fi
             if [ `minor_ver "$MODE"` -ge 3 ]
@@ -861,21 +835,8 @@ setup_arguments()
 {
     G_MODE=""
     case "$MODE" in
-        "ssl3")
-            G_PRIO_MODE="+VERS-SSL3.0"
-            ;;
-        "tls1")
-            G_PRIO_MODE="+VERS-TLS1.0"
-            ;;
-        "tls1_1")
-            G_PRIO_MODE="+VERS-TLS1.1"
-            ;;
         "tls1_2")
             G_PRIO_MODE="+VERS-TLS1.2"
-            ;;
-        "dtls1")
-            G_PRIO_MODE="+VERS-DTLS1.0"
-            G_MODE="-u"
             ;;
         "dtls1_2")
             G_PRIO_MODE="+VERS-DTLS1.2"
@@ -893,10 +854,23 @@ setup_arguments()
         G_PRIO_CCM=""
     fi
 
-    M_SERVER_ARGS="server_port=$PORT server_addr=0.0.0.0 force_version=$MODE arc4=1"
-    O_SERVER_ARGS="-accept $PORT -cipher NULL,ALL -$MODE -dhparam data_files/dhparams.pem"
+    M_SERVER_ARGS="server_port=$PORT server_addr=0.0.0.0 force_version=$MODE"
+    O_SERVER_ARGS="-accept $PORT -cipher NULL,ALL -$MODE"
     G_SERVER_ARGS="-p $PORT --http $G_MODE"
-    G_SERVER_PRIO="NORMAL:${G_PRIO_CCM}+ARCFOUR-128:+NULL:+MD5:+PSK:+DHE-PSK:+ECDHE-PSK:+RSA-PSK:-VERS-TLS-ALL:$G_PRIO_MODE"
+    G_SERVER_PRIO="NORMAL:${G_PRIO_CCM}+NULL:+MD5:+PSK:+DHE-PSK:+ECDHE-PSK:+SHA256:+SHA384:+RSA-PSK:-VERS-TLS-ALL:$G_PRIO_MODE"
+
+    # The default prime for `openssl s_server` depends on the version:
+    # * OpenSSL <= 1.0.2a: 512-bit
+    # * OpenSSL 1.0.2b to 1.1.1b: 1024-bit
+    # * OpenSSL >= 1.1.1c: 2048-bit
+    # Mbed TLS wants >=1024, so force that for older versions. Don't force
+    # it for newer versions, which reject a 1024-bit prime. Indifferently
+    # force it or not for intermediate versions.
+    case $($OPENSSL_CMD version) in
+        "OpenSSL 1.0"*)
+            O_SERVER_ARGS="$O_SERVER_ARGS -dhparam data_files/dhparams.pem"
+            ;;
+    esac
 
     # with OpenSSL 1.0.1h, -www, -WWW and -HTTP break DTLS handshakes
     if is_dtls "$MODE"; then
@@ -945,39 +919,29 @@ setup_arguments()
             ;;
 
         "RSA")
-            M_SERVER_ARGS="$M_SERVER_ARGS crt_file=data_files/server2.crt key_file=data_files/server2.key"
-            O_SERVER_ARGS="$O_SERVER_ARGS -cert data_files/server2.crt -key data_files/server2.key"
-            G_SERVER_ARGS="$G_SERVER_ARGS --x509certfile data_files/server2.crt --x509keyfile data_files/server2.key"
+            M_SERVER_ARGS="$M_SERVER_ARGS crt_file=data_files/server2-sha256.crt key_file=data_files/server2.key"
+            O_SERVER_ARGS="$O_SERVER_ARGS -cert data_files/server2-sha256.crt -key data_files/server2.key"
+            G_SERVER_ARGS="$G_SERVER_ARGS --x509certfile data_files/server2-sha256.crt --x509keyfile data_files/server2.key"
 
             if [ "X$VERIFY" = "XYES" ]; then
-                M_CLIENT_ARGS="$M_CLIENT_ARGS crt_file=data_files/server1.crt key_file=data_files/server1.key"
-                O_CLIENT_ARGS="$O_CLIENT_ARGS -cert data_files/server1.crt -key data_files/server1.key"
-                G_CLIENT_ARGS="$G_CLIENT_ARGS --x509certfile data_files/server1.crt --x509keyfile data_files/server1.key"
+                M_CLIENT_ARGS="$M_CLIENT_ARGS crt_file=data_files/cert_sha256.crt key_file=data_files/server1.key"
+                O_CLIENT_ARGS="$O_CLIENT_ARGS -cert data_files/cert_sha256.crt -key data_files/server1.key"
+                G_CLIENT_ARGS="$G_CLIENT_ARGS --x509certfile data_files/cert_sha256.crt --x509keyfile data_files/server1.key"
             else
                 M_CLIENT_ARGS="$M_CLIENT_ARGS crt_file=none key_file=none"
             fi
-
-            # Allow SHA-1. It's disabled by default for security reasons but
-            # our tests still use certificates signed with it.
-            M_SERVER_ARGS="$M_SERVER_ARGS allow_sha1=1"
-            M_CLIENT_ARGS="$M_CLIENT_ARGS allow_sha1=1"
             ;;
 
         "PSK")
             # give RSA-PSK-capable server a RSA cert
             # (should be a separate type, but harder to close with openssl)
-            M_SERVER_ARGS="$M_SERVER_ARGS psk=6162636465666768696a6b6c6d6e6f70 ca_file=none crt_file=data_files/server2.crt key_file=data_files/server2.key"
+            M_SERVER_ARGS="$M_SERVER_ARGS psk=6162636465666768696a6b6c6d6e6f70 ca_file=none crt_file=data_files/server2-sha256.crt key_file=data_files/server2.key"
             O_SERVER_ARGS="$O_SERVER_ARGS -psk 6162636465666768696a6b6c6d6e6f70 -nocert"
-            G_SERVER_ARGS="$G_SERVER_ARGS --x509certfile data_files/server2.crt --x509keyfile data_files/server2.key --pskpasswd data_files/passwd.psk"
+            G_SERVER_ARGS="$G_SERVER_ARGS --x509certfile data_files/server2-sha256.crt --x509keyfile data_files/server2.key --pskpasswd data_files/passwd.psk"
 
             M_CLIENT_ARGS="$M_CLIENT_ARGS psk=6162636465666768696a6b6c6d6e6f70 crt_file=none key_file=none"
             O_CLIENT_ARGS="$O_CLIENT_ARGS -psk 6162636465666768696a6b6c6d6e6f70"
             G_CLIENT_ARGS="$G_CLIENT_ARGS --pskusername Client_identity --pskkey=6162636465666768696a6b6c6d6e6f70"
-
-            # Allow SHA-1. It's disabled by default for security reasons but
-            # our tests still use certificates signed with it.
-            M_SERVER_ARGS="$M_SERVER_ARGS allow_sha1=1"
-            M_CLIENT_ARGS="$M_CLIENT_ARGS allow_sha1=1"
             ;;
     esac
 }
@@ -1106,7 +1070,7 @@ run_client() {
     VERIF=$(echo $VERIFY | tr '[:upper:]' '[:lower:]')
     TITLE="`echo $1 | head -c1`->`echo $SERVER_NAME | head -c1`"
     TITLE="$TITLE $MODE,$VERIF $2"
-    printf "$TITLE "
+    printf "%s " "$TITLE"
     LEN=$(( 72 - `echo "$TITLE" | wc -c` ))
     for i in `seq 1 $LEN`; do printf '.'; done; printf ' '
 
@@ -1219,7 +1183,7 @@ run_client() {
             cp $CLI_OUT c-cli-${TESTS}.log
             echo "  ! outputs saved to c-srv-${TESTS}.log, c-cli-${TESTS}.log"
 
-            if [ "X${USER:-}" = Xbuildbot -o "X${LOGNAME:-}" = Xbuildbot -o "${LOG_FAILURE_ON_STDOUT:-0}" != 0 ]; then
+            if [ "${LOG_FAILURE_ON_STDOUT:-0}" != 0 ]; then
                 echo "  ! server output:"
                 cat c-srv-${TESTS}.log
                 echo "  ! ==================================================="

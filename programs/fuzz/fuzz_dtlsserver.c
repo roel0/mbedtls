@@ -1,17 +1,22 @@
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include "common.h"
 #include "mbedtls/ssl.h"
+#include "test/certs.h"
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
-#include "mbedtls/certs.h"
 #include "mbedtls/timing.h"
 #include "mbedtls/ssl_cookie.h"
 
 
-#ifdef MBEDTLS_SSL_SRV_C
+#if defined(MBEDTLS_SSL_SRV_C) && \
+    defined(MBEDTLS_ENTROPY_C) && \
+    defined(MBEDTLS_CTR_DRBG_C) && \
+    defined(MBEDTLS_TIMING_C)
 const char *pers = "fuzz_dtlsserver";
 const unsigned char client_ip[4] = {0x7F, 0, 0, 1};
 static int initialized = 0;
@@ -19,11 +24,15 @@ static int initialized = 0;
 static mbedtls_x509_crt srvcert;
 static mbedtls_pk_context pkey;
 #endif
-#endif // MBEDTLS_SSL_SRV_C
+#endif
 #endif // MBEDTLS_SSL_PROTO_DTLS
 
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-#if defined(MBEDTLS_SSL_PROTO_DTLS) && defined(MBEDTLS_SSL_SRV_C)
+#if defined(MBEDTLS_SSL_PROTO_DTLS) && \
+    defined(MBEDTLS_SSL_SRV_C) && \
+    defined(MBEDTLS_ENTROPY_C) && \
+    defined(MBEDTLS_CTR_DRBG_C) && \
+    defined(MBEDTLS_TIMING_C)
     int ret;
     size_t len;
     mbedtls_ssl_context ssl;
@@ -46,7 +55,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
                                    mbedtls_test_cas_pem_len ) != 0)
             return 1;
         if (mbedtls_pk_parse_key( &pkey, (const unsigned char *) mbedtls_test_srv_key,
-                                 mbedtls_test_srv_key_len, NULL, 0 ) != 0)
+                                 mbedtls_test_srv_key_len, NULL, 0,
+                                 dummy_random, NULL ) != 0)
             return 1;
 #endif
         dummy_init();
