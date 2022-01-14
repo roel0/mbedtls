@@ -766,5 +766,4 @@ void mbedtls_x509_crl_free( mbedtls_x509_crl *crl )
     }
     while( crl_cur != NULL );
 }
-
 #endif /* MBEDTLS_X509_CRL_PARSE_C */

@@ -51,6 +51,7 @@ set(src_crypto
     pk.c
     pk_wrap.c
     pkcs12.c
+    pkcs7.c
     pkcs5.c
     pkparse.c
     pkwrite.c
