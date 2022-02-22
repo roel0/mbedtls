@@ -1889,7 +1889,7 @@ int mbedtls_realloc_out_buf(mbedtls_ssl_context *ssl, uint32_t new_size)
     uint32_t iv_offset = ssl->out_iv - ssl->out_buf;
     uint32_t msg_offset = ssl->out_msg - ssl->out_buf;
 
-    MBEDTLS_SSL_DEBUG_MSG( 1, ( "resize %u -> %u" , ssl->out_buf_end - ssl->out_buf, new_size));
+    MBEDTLS_SSL_DEBUG_MSG( 1, ( "resize %d -> %lu" , ssl->out_buf_end - ssl->out_buf, new_size));
 
     ssl->out_buf = mbedtls_realloc(ssl->out_buf, new_size);
     if (!ssl->out_buf) {
@@ -1967,7 +1967,7 @@ int mbedtls_ssl_write_certificate( mbedtls_ssl_context *ssl )
         {
 
             if( n > MBEDTLS_SSL_OUT_CONTENT_LEN - 3 - i ) {
-                MBEDTLS_SSL_DEBUG_MSG( 1, ( "certificate too large, %d > %d",
+                MBEDTLS_SSL_DEBUG_MSG( 1, ( "certificate too large, %u > %d",
                                i + 3 + n, MBEDTLS_SSL_OUT_CONTENT_LEN ) );
                 return( MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL );
             }

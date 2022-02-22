@@ -1264,11 +1264,6 @@ static int ssl_write_client_hello( mbedtls_ssl_context *ssl )
     ext_len += olen;
 #endif /* MBEDTLS_SSL_DTLS_CONNECTION_ID */
 
-#if defined(MBEDTLS_SSL_MAX_FRAGMENT_LENGTH)
-    ssl_write_max_fragment_length_ext( ssl, p + 2 + ext_len, ssl->out_msg + (ssl->out_buf_end - ssl->out_buf), &olen );
-    ext_len += olen;
-#endif
-
 #if defined(MBEDTLS_SSL_RECORD_SIZE_LIMIT)
     ssl_write_record_size_limit_ext(ssl, p + 2 + ext_len, &olen);
     ext_len += olen;
