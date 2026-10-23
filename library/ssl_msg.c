@@ -5419,6 +5419,8 @@ static int ssl_write_real( mbedtls_ssl_context *ssl,
 {
     int ret = mbedtls_ssl_get_max_out_record_payload( ssl );
     const size_t max_len = (size_t) ret;
+    int expansion;
+    uint32_t needed;
 
     if( ret < 0 )
     {
@@ -5463,11 +5465,18 @@ static int ssl_write_real( mbedtls_ssl_context *ssl,
          * copy the data into the internal buffers and setup the data structure
          * to keep track of partial writes
          */
-        if (len > (uint32_t)(ssl->out_buf_end - ssl->out_buf) - (uint32_t)(ssl->out_msg - ssl->out_buf)) {
-            uint32_t new_size = MBEDTLS_SSL_MIN_CONTENT_LEN + mbedtls_ssl_out_hdr_len(ssl) + (ssl->out_msg - ssl->out_buf) + len;
-
-            if ((ret = mbedtls_realloc_out_buf(ssl, new_size)) != 0) {
-                return ret;
+        expansion = mbedtls_ssl_get_record_expansion( ssl );
+        if( expansion < 0 )
+        {
+            MBEDTLS_SSL_DEBUG_RET( 1, "mbedtls_ssl_get_record_expansion", expansion );
+            return( expansion );
+        }
+        needed = (uint32_t)( ssl->out_msg - ssl->out_buf ) + (uint32_t) len + (uint32_t) expansion;
+        if( needed > (uint32_t)( ssl->out_buf_end - ssl->out_buf ) )
+        {
+            if( ( ret = mbedtls_realloc_out_buf( ssl, needed + MBEDTLS_SSL_MIN_CONTENT_LEN ) ) != 0 )
+            {
+                return( ret );
             }
         }
 
